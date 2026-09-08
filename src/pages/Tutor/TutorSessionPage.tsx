@@ -29,6 +29,7 @@ import type {
   MicroLessonRetestPayload,
   MultipleChoicePayload,
   TutorSessionAnsweredItem,
+  TutorSessionPendingItem,
   TypedRecallPayload,
 } from '@/types/Tutor/tutor'
 import { routePaths } from '@/utils/paths'
@@ -43,9 +44,12 @@ export function TutorSessionPage() {
   const [isLoadingNext, setIsLoadingNext] = useState(false)
   const [submittedAnswerItem, setSubmittedAnswerItem] =
     useState<TutorSessionAnsweredItem | null>(null)
+  const [answeredItemSnapshot, setAnsweredItemSnapshot] =
+    useState<TutorSessionPendingItem | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const renderStartTimeRef = useRef<number>(0)
+  const prefetchPromiseRef = useRef<Promise<unknown> | null>(null)
 
   // Query for the active session (automatically starts or resumes)
   const sessionQuery = useActiveTutorSessionQuery()
@@ -57,8 +61,10 @@ export function TutorSessionPage() {
 
   // Track render start time for current item
   useEffect(() => {
-    renderStartTimeRef.current = Date.now()
-  }, [currentItem?.id])
+    if (!submittedAnswerItem && currentItem?.id) {
+      renderStartTimeRef.current = Date.now()
+    }
+  }, [currentItem?.id, submittedAnswerItem])
 
   const submitAnswerMutation = useSubmitAnswerMutation()
   const abandonMutation = useAbandonSessionMutation(session?.id ?? '')
@@ -78,6 +84,7 @@ export function TutorSessionPage() {
     )
 
     try {
+      setAnsweredItemSnapshot(currentItem ?? null)
       const result = await submitAnswerMutation.mutateAsync({
         sessionId: session.id,
         itemId: currentItem.id,
@@ -88,6 +95,13 @@ export function TutorSessionPage() {
         },
       })
       setSubmittedAnswerItem(result.item)
+
+      // TRIGGER EVENT: As soon as answer is submitted, pre-generate next question in the background!
+      prefetchPromiseRef.current = queryClient.refetchQueries({
+        queryKey: tutorQueryKeys.activeSession(),
+      }).catch((err) => {
+        console.warn('Background tutor question prefetch error:', err)
+      })
     } catch (err: unknown) {
       const errObj = err as { response?: { data?: { message?: string } } }
       setErrorMessage(
@@ -99,13 +113,30 @@ export function TutorSessionPage() {
   const handleNextItem = async () => {
     setIsLoadingNext(true)
     try {
-      await queryClient.refetchQueries({
-        queryKey: tutorQueryKeys.activeSession(),
-      })
+      if (prefetchPromiseRef.current) {
+        try {
+          await prefetchPromiseRef.current
+        } catch {
+          await queryClient.refetchQueries({
+            queryKey: tutorQueryKeys.activeSession(),
+          })
+        }
+        prefetchPromiseRef.current = null
+      } else {
+        await queryClient.refetchQueries({
+          queryKey: tutorQueryKeys.activeSession(),
+        })
+      }
       setSubmittedAnswerItem(null)
+      setAnsweredItemSnapshot(null)
       setHintUsed(false)
       setErrorMessage(null)
       renderStartTimeRef.current = Date.now()
+    } catch (err: unknown) {
+      const errObj = err as { response?: { data?: { message?: string } } }
+      setErrorMessage(
+        errObj?.response?.data?.message ?? t('errors.loadFailed'),
+      )
     } finally {
       setIsLoadingNext(false)
     }
@@ -113,6 +144,8 @@ export function TutorSessionPage() {
 
   const handleConfirmAbandon = async () => {
     if (!session?.id) return
+    prefetchPromiseRef.current = null
+    setAnsweredItemSnapshot(null)
     try {
       await abandonMutation.mutateAsync()
       setAbandonDialogOpen(false)
@@ -226,22 +259,28 @@ export function TutorSessionPage() {
     )
   }
 
-  if (!currentItem || !session) {
+  const activeItem = submittedAnswerItem
+    ? (answeredItemSnapshot ?? currentItem)
+    : currentItem
+
+  if (!activeItem || !session) {
     return null
   }
 
-  const payload = currentItem.questionPayload as Record<string, unknown>
+  const payload = activeItem.questionPayload as Record<string, unknown>
   const meaningVi = (payload?.meaningVi as string) || undefined
   const isAnsweredState = Boolean(submittedAnswerItem)
-  const isLastItem = currentItem.position >= session.targetActivityCount
+  const isLastItem = submittedAnswerItem
+    ? submittedAnswerItem.position >= session.targetActivityCount
+    : activeItem.position >= session.targetActivityCount
 
   return (
     <Box sx={{ maxWidth: 640, mx: 'auto', py: { xs: 2, sm: 4 } }}>
       {/* Progress & Abandon Header */}
       <TutorProgressHeader
-        currentPosition={currentItem.position}
+        currentPosition={activeItem.position}
         totalActivities={session.targetActivityCount}
-        isNewWord={currentItem.isNewWord}
+        isNewWord={activeItem.isNewWord}
         onAbandonClick={() => setAbandonDialogOpen(true)}
         disabled={submitAnswerMutation.isPending || isAnsweredState}
       />
@@ -272,9 +311,9 @@ export function TutorSessionPage() {
         />
 
         {/* Dynamic Question Component based on questionType */}
-        {currentItem.questionType === 'MULTIPLE_CHOICE' && (
+        {activeItem.questionType === 'MULTIPLE_CHOICE' && (
           <MultipleChoiceQuestion
-            key={currentItem.id}
+            key={activeItem.id}
             payload={payload as unknown as MultipleChoicePayload}
             onSubmit={handleAnswerSubmit}
             disabled={isAnsweredState}
@@ -282,9 +321,9 @@ export function TutorSessionPage() {
           />
         )}
 
-        {currentItem.questionType === 'CONTEXTUAL_CLOZE' && (
+        {activeItem.questionType === 'CONTEXTUAL_CLOZE' && (
           <ContextualClozeQuestion
-            key={currentItem.id}
+            key={activeItem.id}
             payload={payload as unknown as ContextualClozePayload}
             onSubmit={handleAnswerSubmit}
             disabled={isAnsweredState}
@@ -292,9 +331,9 @@ export function TutorSessionPage() {
           />
         )}
 
-        {currentItem.questionType === 'TYPED_RECALL' && (
+        {activeItem.questionType === 'TYPED_RECALL' && (
           <TypedRecallQuestion
-            key={currentItem.id}
+            key={activeItem.id}
             payload={payload as unknown as TypedRecallPayload}
             onSubmit={handleAnswerSubmit}
             disabled={isAnsweredState}
@@ -302,9 +341,9 @@ export function TutorSessionPage() {
           />
         )}
 
-        {currentItem.questionType === 'MICRO_LESSON_RETEST' && (
+        {activeItem.questionType === 'MICRO_LESSON_RETEST' && (
           <MicroLessonRetestQuestion
-            key={currentItem.id}
+            key={activeItem.id}
             payload={payload as unknown as MicroLessonRetestPayload}
             onSubmit={handleAnswerSubmit}
             disabled={isAnsweredState}
@@ -323,7 +362,7 @@ export function TutorSessionPage() {
             fsrsRating={submittedAnswerItem.fsrsRating}
             onNext={handleNextItem}
             isLastItem={isLastItem}
-            isLoadingNext={sessionQuery.isFetching || isLoadingNext}
+            isLoadingNext={isLoadingNext}
           />
         )}
       </Paper>

@@ -9,7 +9,7 @@ import { TutorDashboardCard } from '@/components/Tutor/TutorDashboardCard'
 import { AuthContext } from '@/contexts/AuthContext'
 import i18n from '@/i18n/i18n'
 import { TutorHistoryDetailPage } from '@/pages/Tutor/TutorHistoryDetailPage'
-import { TutorHistoryPage } from '@/pages/Tutor/TutorHistoryPage'
+import { TutorPage } from '@/pages/Tutor/TutorPage'
 import { TutorSessionPage } from '@/pages/Tutor/TutorSessionPage'
 import { appTheme } from '@/theme'
 import type { CurrentUser } from '@/types/Auth/auth'
@@ -241,7 +241,8 @@ describe('Tutor UI Features', () => {
       summary: null,
     }
 
-    vi.spyOn(tutorApi, 'startOrResumeSession')
+    const startOrResumeSpy = vi
+      .spyOn(tutorApi, 'startOrResumeSession')
       .mockResolvedValueOnce(sessionWithItem1)
       .mockResolvedValue(sessionWithItem2)
     // First getSession returns item 1, subsequent getSession (triggered by invalidateQueries) returns item 2
@@ -279,6 +280,9 @@ describe('Tutor UI Features', () => {
       name: /Câu tiếp theo/i,
     })
     expect(nextBtn).toBeInTheDocument()
+
+    // Question 2 has ALREADY been prefetched in the background right upon submission
+    expect(startOrResumeSpy).toHaveBeenCalledTimes(2)
 
     // 4. Click "Câu tiếp theo" -> Advances directly to question 2
     await user.click(nextBtn)
@@ -364,12 +368,12 @@ describe('Tutor UI Features', () => {
 
     vi.spyOn(tutorApi, 'getHistory').mockResolvedValueOnce(historyData)
 
-    renderWithProviders(<TutorHistoryPage />, '/tutor/history')
+    renderWithProviders(<TutorPage />, '/tutor/history')
 
     expect(
       await screen.findByText(/Ngày 2026-08-30/i),
     ).toBeInTheDocument()
-    expect(screen.getByText(/13 hoạt động/i)).toBeInTheDocument()
+    expect(screen.getByText(/13 câu hỏi/i)).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: /Xem chi tiết/i }),
     ).toBeInTheDocument()
@@ -411,7 +415,7 @@ describe('Tutor UI Features', () => {
     expect(
       await screen.findByText(/Chi tiết phiên học/i),
     ).toBeInTheDocument()
-    expect(screen.getByText(/Hoạt động 1/i)).toBeInTheDocument()
+    expect(screen.getByText(/Câu hỏi 1/i)).toBeInTheDocument()
     expect(screen.getByText(/Trắc nghiệm/i)).toBeInTheDocument()
     expect(
       screen.getByText(/Ephemeral có nghĩa là tồn tại trong thời gian rất ngắn/i),
