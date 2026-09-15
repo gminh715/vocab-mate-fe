@@ -19,6 +19,14 @@ interface TutorFeedbackCardProps {
   isLoadingNext?: boolean
 }
 
+const formatDisplayAnswer = (answer: unknown): string => {
+  if (answer === null || answer === undefined) return ''
+  if (typeof answer === 'object' && answer !== null && 'value' in answer) {
+    return String((answer as { value: unknown }).value ?? '')
+  }
+  return String(answer)
+}
+
 export function TutorFeedbackCard({
   isCorrect,
   userAnswer,
@@ -39,12 +47,9 @@ export function TutorFeedbackCard({
         mt: 3,
         p: { xs: 2.5, sm: 3 },
         borderRadius: 3,
-        borderColor: isCorrect ? '#86EFAC' : '#FECACA',
-        borderWidth: 2,
+        borderColor: isCorrect ? '#86EFAC' : '#FCA5A5',
         bgcolor: isCorrect ? '#F0FDF4' : '#FEF2F2',
-        boxShadow: isCorrect
-          ? '0 8px 30px rgba(22, 163, 74, 0.08)'
-          : '0 8px 30px rgba(220, 38, 38, 0.08)',
+        transition: 'all 0.3s ease',
       }}
     >
       <Stack spacing={2}>
@@ -63,8 +68,9 @@ export function TutorFeedbackCard({
           <Typography
             variant="body1"
             sx={{
-              fontWeight: 600,
               color: isCorrect ? '#166534' : '#991B1B',
+              fontWeight: 500,
+              lineHeight: 1.6,
             }}
           >
             {feedbackVi}
@@ -100,7 +106,7 @@ export function TutorFeedbackCard({
                   textDecoration: !isCorrect ? 'line-through' : 'none',
                 }}
               >
-                {String(userAnswer)}
+                {formatDisplayAnswer(userAnswer)}
               </Typography>
             </Box>
           ) : null}
@@ -135,7 +141,7 @@ export function TutorFeedbackCard({
                   mt: 0.25,
                 }}
               >
-                {String(correctAnswer)}
+                {formatDisplayAnswer(correctAnswer)}
               </Typography>
             </Box>
           ) : null}

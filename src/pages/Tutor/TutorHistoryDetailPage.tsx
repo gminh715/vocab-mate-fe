@@ -17,6 +17,22 @@ import type {
 } from '@/types/Tutor/tutor'
 import { routePaths } from '@/utils/paths'
 
+const formatDisplayAnswer = (answer: unknown): string => {
+  if (answer === null || answer === undefined) return ''
+  if (typeof answer === 'object' && answer !== null && 'value' in answer) {
+    return String((answer as { value: unknown }).value ?? '')
+  }
+  return String(answer)
+}
+
+const isAnswerMatch = (optionId: string, answer: unknown): boolean => {
+  if (answer === null || answer === undefined) return false
+  if (typeof answer === 'object' && answer !== null && 'value' in answer) {
+    return optionId === (answer as { value: unknown }).value
+  }
+  return optionId === answer
+}
+
 export function TutorHistoryDetailPage() {
   const { t } = useTranslation('tutor')
   const { sessionId = '' } = useParams<{ sessionId: string }>()
@@ -112,13 +128,13 @@ export function TutorHistoryDetailPage() {
                   borderColor:
                     opt.id === item.correctAnswer
                       ? 'success.main'
-                      : opt.id === item.userAnswer
+                      : isAnswerMatch(opt.id, item.userAnswer)
                         ? 'error.main'
                         : 'divider',
                   bgcolor:
                     opt.id === item.correctAnswer
                       ? 'success.light'
-                      : opt.id === item.userAnswer
+                      : isAnswerMatch(opt.id, item.userAnswer)
                         ? 'error.light'
                         : 'background.paper',
                   display: 'flex',
@@ -339,7 +355,7 @@ export function TutorHistoryDetailPage() {
                       {t('feedback.yourAnswer')}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                      {String(item.userAnswer)}
+                      {formatDisplayAnswer(item.userAnswer)}
                     </Typography>
                   </Box>
                 ) : null}
@@ -350,7 +366,7 @@ export function TutorHistoryDetailPage() {
                       {t('feedback.correctAnswer')}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>
-                      {String(item.correctAnswer)}
+                      {formatDisplayAnswer(item.correctAnswer)}
                     </Typography>
                   </Box>
                 ) : null}
